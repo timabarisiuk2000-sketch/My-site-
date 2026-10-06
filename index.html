@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Конвертер валют</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .container {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 40px 30px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+
+  h1 {
+    font-size: 24px;
+    color: #1e293b;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: #64748b;
+    text-align: center;
+    margin-bottom: 30px;
+  }
+
+  .field {
+    margin-bottom: 20px;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  input, select {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 16px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    color: #1e293b;
+    transition: all 0.2s;
+    outline: none;
+  }
+
+  input:focus, select:focus {
+    border-color: #3b82f6;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(59,130,246,0.1);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .swap-btn {
+    display: block;
+    margin: 0 auto 20px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid #e2e8f0;
+    background: #ffffff;
+    color: #3b82f6;
+    font-size: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .swap-btn:hover {
+    background: #3b82f6;
+    color: #ffffff;
+    transform: rotate(180deg);
+  }
+
+  .result {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border-radius: 14px;
+    padding: 24px;
+    text-align: center;
+    margin-top: 10px;
+    border: 1px solid #bfdbfe;
+  }
+
+  .result-amount {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1e3a8a;
+    word-break: break-all;
+  }
+
+  .result-rate {
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 8px;
+  }
+
+  .status {
+    text-align: center;
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 16px;
+    min-height: 20px;
+  }
+
+  .error { color: #dc2626; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>💱 Конвертер валют</h1>
+  <p class="subtitle">Актуальные курсы на сегодня</p>
+
+  <div class="field">
+    <label for="amount">Сумма</label>
+    <input type="number" id="amount" value="100" min="0" step="any">
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="from">Из</label>
+      <select id="from"></select>
+    </div>
+    <div class="field">
+      <label for="to">В</label>
+      <select id="to"></select>
+    </div>
+  </div>
+
+  <button class="swap-btn" id="swap" title="Поменять местами">⇅</button>
+
+  <div class="result">
+    <div class="result-amount" id="result">—</div>
+    <div class="result-rate" id="rate"></div>
+  </div>
+
+  <div class="status" id="status">Загрузка курсов...</div>
+</div>
+
+<script>
+  const API = 'https://api.exchangerate.host/latest';
+  const FALLBACK = 'https://open.er-api.com/v6/latest/USD';
+
+  const amountEl = document.getElementById('amount');
+  const fromEl   = document.getElementById('from');
+  const toEl     = document.getElementById('to');
+  const resultEl = document.getElementById('result');
+  const rateEl   = document.getElementById('rate');
+  const statusEl = document.getElementById('status');
+
+  const POPULAR = ['USD','EUR','RUB','BYN','UAH','KZT','GBP','CNY','JPY','TRY','PLN','CHF','AED','GEL'];
+
+  let rates = {};      // курсы относительно базовой валюты
+  let baseCurrency = 'USD';
+  let currencyNames = {};
+
+  // Расшифровки валют
+  const NAMES = {
+    USD:'Доллар США', EUR:'Евро', RUB:'Российский рубль', BYN:'Белорусский рубль',
+    UAH:'Украинская гривна', KZT:'Казахстанский тенге', GBP:'Фунт стерлингов',
+    CNY:'Китайский юань', JPY:'Японская йена', TRY:'Турецкая лира',
+    PLN:'Польский злотый', CHF:'Швейцарский франк', AED:'Дирхам ОАЭ',
+    GEL:'Грузинский лари', CAD:'Канадский доллар', AUD:'Австралийский доллар',
+    SEK:'Шведская крона', NOK:'Норвежская крона', INR:'Индийская рупия',
+    BRL:'Бразильский реал', KRW:'Южнокорейская вона', SGD:'Сингапурский доллар',
+    HKD:'Гонконгский доллар', MXN:'Мексиканское песо', ZAR:'Южноафриканский рэнд'
+  };
+
+  async function loadRates() {
+    statusEl.textContent = 'Загрузка курсов...';
+    statusEl.className = 'status';
+
+    try {
+      // Пробуем основной API
+      let res = await fetch(`https://open.er-api.com/v6/latest/${baseCurrency}`);
+      if (!res.ok) throw new Error('API недоступен');
+      const data = await res.json();
+
+      if (data.result === 'success') {
+        rates = data.rates;
+        populateSelects();
+        convert();
+        statusEl.textContent = 'Курсы обновлены: ' + new Date(data.time_last_update_utc).toLocaleString('ru-RU');
+      } else {
+        throw new Error('Ошибка данных');
+      }
+    } catch (e) {
+      statusEl.textContent = 'Не удалось загрузить курсы. Проверьте интернет.';
+      statusEl.className = 'status error';
+      console.error(e);
+    }
+  }
+
+  function populateSelects() {
+    const codes = Object.keys(rates).sort();
+
+    // Сначала популярные, потом остальные
+    const sorted = [
+      ...POPULAR.filter(c => codes.includes(c)),
+      ...codes.filter(c => !POPULAR.includes(c))
+    ];
+
+    fromEl.innerHTML = '';
+    toEl.innerHTML = '';
+
+    sorted.forEach(code => {
+      const name = NAMES[code] ? `${code} — ${NAMES[code]}` : code;
+      fromEl.add(new Option(name, code));
+      toEl.add(new Option(name, code));
+    });
+
+    fromEl.value = 'USD';
+    toEl.value = 'RUB';
+  }
+
+  function convert() {
+    const amount = parseFloat(amountEl.value) || 0;
+    const from = fromEl.value;
+    const to = toEl.value;
+
+    if (!rates[from] || !rates[to]) return;
+
+    // Пересчет через базовую валюту
+    const inBase = amount / rates[from];
+    const result = inBase * rates[to];
+
+    const decimals = result >= 100 ? 2 : result >= 1 ? 3 : 4;
+
+    resultEl.textContent = `${result.toFixed(decimals)} ${to}`;
+
+    const unitRate = (1 / rates[from]) * rates[to];
+    rateEl.textContent = `1 ${from} = ${unitRate.toFixed(4)} ${to}`;
+  }
+
+  // Слушатели
+  amountEl.addEventListener('input', convert);
+  fromEl.addEventListener('change', convert);
+  toEl.addEventListener('change', convert);
+
+  document.getElementById('swap').addEventListener('click', () => {
+    const f = fromEl.value;
+    fromEl.value = toEl.value;
+    toEl.value = f;
+    convert();
+  });
+
+  // Старт
+  loadRates();
+</script>
+
+</body>
+</html>
